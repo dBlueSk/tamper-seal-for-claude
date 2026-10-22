@@ -78,8 +78,11 @@ if [ "$got" = "SEAL ok ALERT" ]; then A="PASS"; else A="FAIL ($got)"; fi
 echo "A) hook logs an edit, outside change is caught: $A"
 
 B="skipped (Claude Code not found)"
-if command -v claude >/dev/null 2>&1; then
-  claude -p "Use the Write tool to create the file e2e.txt containing the word hello. Do nothing else." --allowedTools Write >/dev/null 2>&1
+CLAUDE=$(command -v claude 2>/dev/null)
+# The Claude desktop app on macOS ships its own Claude Code; use it if there's no claude on PATH.
+[ -z "$CLAUDE" ] && CLAUDE=$(find "$HOME/Library/Application Support/Claude/claude-code" -maxdepth 6 -type f -name claude -perm -u+x 2>/dev/null | sort | tail -n 1)
+if [ -n "$CLAUDE" ]; then
+  "$CLAUDE" -p "Use the Write tool to create the file e2e.txt containing the word hello. Do nothing else." --allowedTools Write >/dev/null 2>&1
   if grep -q "e2e.txt" "$TS_DIR/events.log" 2>/dev/null; then B="PASS"; else B="FAIL (no log line; if Claude Code was just updated or not logged in, run the installer again)"; fi
 fi
 echo "B) real Claude Code edit is logged automatically: $B"
