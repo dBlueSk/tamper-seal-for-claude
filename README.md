@@ -71,20 +71,28 @@ Part of [claude-agent-checks](https://github.com/dBlueSk/claude-agent-checks), a
 - **It is not tamper-proof security.** Anything that can edit the files can also write to the log. Fingerprints are shortened to 12 hex characters and nothing is signed. For integrity monitoring, use tools like AIDE or Tripwire, or simply `git status`.
 - **It works on one machine** with local files.
 
-## Automatic logging with hooks (experimental / untested)
+## Automatic logging with a Claude Code hook (optional)
 
-A Claude Code `PostToolUse` hook can log actions automatically. This has **not been tested**. Review it before adding it to your settings, because it runs a command after every matching tool call.
+Without the hook, Claude logs its own edits because `SKILL.md` tells it to. The hook makes that automatic: after Claude Code's Edit or Write tool changes a file, `hook/hook.sh` logs it as `modified`, stamped with the session (`cc-` plus the first 8 characters of the session ID). Claude can no longer forget to log its own edits, so only changes from outside raise an ALERT.
 
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      { "matcher": "Bash", "hooks": [ { "type": "command",
-        "command": "TS_DIR=$HOME/tamper-seal bash $HOME/tamper-seal/scripts/evlog.sh hook checked $HOME/tamper-seal/target.txt" } ] }
-    ]
-  }
-}
+```bash
+bash hook/install-hook.command    # or: chmod +x hook/*.command once, then double-click on macOS
 ```
+
+The installer shows what it will change and asks first. It backs up `~/.claude/settings.json`, adds one `PostToolUse` hook (matcher `Edit|Write|MultiEdit|NotebookEdit`), and tests itself:
+
+- **A)** the hook script logs an edit, and an outside change is caught;
+- **B)** one real `claude -p` edit in a temporary folder is logged automatically (uses a little Claude usage; skipped if `claude` is not on your PATH).
+
+`hook/check-log.command` shows whether the hook is installed and the latest log lines. `hook/remove-hook.command` removes only this hook and `~/.claude/tamper-seal`.
+
+**Tested:** end to end with Claude Code on Linux (a real edit was logged automatically); installer and hook script on macOS.
+
+**Limits:**
+- Only Edit/Write tool edits are logged automatically. Edits made through shell commands (like `sed`) are not.
+- It applies to Claude Code on the machine where it is installed, not to cloud sessions.
+- A running Claude Code session may need a restart to pick up the new hook.
+- Hooks run with your user's permissions. Read `hook/hook.sh` (about 15 lines) before installing.
 
 ## License
 

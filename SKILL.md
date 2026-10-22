@@ -31,15 +31,7 @@ The scripts are in this skill's `scripts/` folder: `evlog.sh`, `watch.sh`, `test
 - The watcher only sees what is logged. It reacts at the next check, not at the moment of the change.
 - This is a coordination tool, not tamper-proof security: anything that can edit files can also write to the log.
 
-## Optional: automatic logging with hooks (experimental / untested)
-A Claude Code hook can log actions automatically, like a security camera instead of a guard with a notebook. In cloud sessions, writing hook settings may be blocked by a permission check; do not work around it. Instead, give the user this snippet to review and try themselves (in `~/.claude/settings.json`; a restart or a review in the /hooks menu may be needed):
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "TS_DIR=$HOME/tamper-seal bash $HOME/tamper-seal/scripts/evlog.sh hook checked $HOME/tamper-seal/target.txt" } ] }
-    ]
-  }
-}
-```
-Say clearly that this part has not been tested.
+## Optional: automatic logging with a hook
+If the user has installed the tamper-seal hook (`hook/install-hook.command`, see README), Claude Code's own Edit/Write changes are logged automatically as `modified` (session `cc-xxxxxxxx`) in `~/.claude/tamper-seal/log`. Then you do not need to log those edits yourself, but still log edits made through shell commands, and still run `checked` before relying on a file. To watch that log, use it as `TS_DIR`.
+
+Never install or change hooks yourself: settings that change Claude's own automatic behavior are the user's decision. If the user wants the hook, point them to the installer, which they run themselves.
