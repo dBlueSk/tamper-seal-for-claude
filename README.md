@@ -22,6 +22,21 @@ Each log line carries a sequence number, a UTC timestamp in milliseconds, the se
 - **"Who changed this, and when?"** The log is a numbered, millisecond-stamped trail per session, useful for untangling a messy multi-agent run.
 - **Watching a few sensitive files** (`.env`, CI config, `settings.json`) during an agent session.
 
+## How it compares to Claude Code's built-in check
+
+Claude Code already notices, within one session, when a file it read has changed since: in our test (Claude Code 2.1), its Edit tool still applied the edit and added a note that the file "had been modified on disk since you last read it". tamper-seal covers what that built-in check does not:
+
+| | Claude Code alone | tamper-seal |
+|---|---|---|
+| Notices a file changed since this session read it | ✅ within one session (a note; the edit still goes through) | ✅ |
+| Works across sessions (main chat, sub-agents, parallel sessions) | ❌ each session only knows its own reads | ✅ one shared log for all of them |
+| Who changed the file, and when | ❌ | ✅ numbered, timestamped, per session |
+| Tells trusted edits apart from unknown ones | ❌ any change counts the same | ✅ logged edit = seal, unlogged change = ALERT |
+| Check a file before relying on it, without editing it | ❌ only shows up when editing | ✅ `checked` |
+| History to look back at later | ❌ | ✅ the log |
+
+In short: Claude Code tells a session that a file changed since it read it. tamper-seal is the shared logbook between sessions: it knows which changes were legitimate, who made them, and when.
+
 ## Quick start
 
 Requires `bash`, `awk` and `flock`. Linux works out of the box. On macOS: `brew install flock` (and optionally `brew install coreutils` for faster millisecond timestamps).
