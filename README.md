@@ -2,7 +2,7 @@
 
 A shared, ID-stamped edit log so multiple AI sessions notice when a file changed behind their back.
 
-![Terminal demo: logged edits seal the file; a silent change triggers an ALERT on the next check](assets/demo.gif)
+![Demo with the hook: Claude Code's edits are logged automatically, and an outside change triggers an ALERT on the next check](assets/hook-demo.gif)
 
 ## How it works
 
@@ -33,6 +33,8 @@ bash scripts/test.sh
 ```
 
 Or try it by hand:
+
+![Terminal demo: logged edits seal the file; a silent change triggers an ALERT on the next check](assets/demo.gif)
 
 ```bash
 export TS_DIR=/tmp/tamper-seal-demo
