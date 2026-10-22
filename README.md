@@ -86,7 +86,7 @@ The installer shows what it will change and asks first. It backs up `~/.claude/s
 
 `hook/check-log.command` shows whether the hook is installed and the latest log lines. `hook/remove-hook.command` removes only this hook and `~/.claude/tamper-seal`.
 
-**Tested:** end to end with Claude Code on Linux (a real edit was logged automatically); installer and hook script on macOS.
+**Tested:** end to end on Linux and on macOS: a real Claude Code edit was logged automatically, including with the Claude Code that ships inside the Claude desktop app on macOS.
 
 **Limits:**
 - Only Edit/Write tool edits are logged automatically. Edits made through shell commands (like `sed`) are not.
