@@ -3,7 +3,7 @@
 # Before Claude edits a file, compare it with its last logged edit (the seal).
 #   unchanged, new, or never logged   -> allow (silent)
 #   changed without a log entry       -> block this edit ONCE and tell Claude to re-read;
-#                                        the retry of the same session goes through.
+#                                        the retry of the same session (or sub-agent) goes through.
 # Any internal error allows the edit: the guard must never get in the way by accident.
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 HERE="$HOME/.claude/tamper-seal"
@@ -14,6 +14,8 @@ import hashlib, json, os, subprocess, sys
 try:
     d = json.load(sys.stdin)
     sid = (d.get("session_id") or "unknown")[:8]
+    if d.get("agent_id"):                             # a sub-agent: warned separately from the main session
+        sid += "-sub-" + str(d["agent_id"])[:8]
     ti = d.get("tool_input") or {}
     p = ti.get("file_path") or ti.get("notebook_path") or ""
     if not p or not os.path.isfile(p):
