@@ -14,23 +14,27 @@ AS
   fi
 }
 
-confirm "Remove tamper-seal hook" "Remove the tamper-seal hook from Claude Code and delete ~/.claude/tamper-seal (including its log)?" "Remove" \
+confirm "Remove tamper-seal hook" "Remove the tamper-seal hooks (log + guard) from Claude Code and delete ~/.claude/tamper-seal (including its log)?" "Remove" \
   || { echo "Cancelled. Nothing was changed."; read -r -p "Press Enter to close. " _; exit 0; }
 python3 - "$SETTINGS" <<'PY'
 import json, os, sys
 p = sys.argv[1]
 if not os.path.exists(p): print("no settings.json, nothing to remove"); sys.exit(0)
 data = json.load(open(p))
-post = data.get("hooks", {}).get("PostToolUse", [])
-keep = [e for e in post if not any("tamper-seal/hook.sh" in h.get("command", "") for h in e.get("hooks", []))]
-if len(keep) == len(post): print("hook not found in settings.json")
+hooks = data.get("hooks", {})
+removed = 0
+for ev in ("PostToolUse", "PreToolUse"):
+    entries = hooks.get(ev, [])
+    keep = [e for e in entries if not any(x in h.get("command", "") for h in e.get("hooks", [])
+                                          for x in ("tamper-seal/hook.sh", "tamper-seal/guard.sh"))]
+    removed += len(entries) - len(keep)
+    if keep: hooks[ev] = keep
+    else: hooks.pop(ev, None)
+if not removed: print("tamper-seal hooks not found in settings.json")
 else:
-    if keep: data["hooks"]["PostToolUse"] = keep
-    else:
-        data["hooks"].pop("PostToolUse")
-        if not data["hooks"]: data.pop("hooks")
+    if not hooks: data.pop("hooks", None)
     with open(p, "w") as f: json.dump(data, f, indent=2); f.write("\n")
-    print("hook removed from settings.json")
+    print("removed", removed, "tamper-seal hook(s) from settings.json")
 PY
 rm -rf "$HOME/.claude/tamper-seal" && echo "deleted ~/.claude/tamper-seal"
 echo "flock stays installed; remove it with: brew uninstall flock"

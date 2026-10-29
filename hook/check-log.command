@@ -2,14 +2,16 @@
 # Shows whether the tamper-seal hook is installed and what it has logged.
 S="$HOME/.claude/settings.json"
 L="$HOME/.claude/tamper-seal/log/events.log"
-echo "== hook in settings.json"
-if grep -q "tamper-seal/hook.sh" "$S" 2>/dev/null; then echo "installed"; else echo "NOT installed"; fi
+echo "== hooks in settings.json"
+for h in hook guard; do if grep -q "tamper-seal/$h.sh" "$S" 2>/dev/null; then echo "$h: installed"; else echo "$h: NOT installed"; fi; done
 echo
 echo "== log: $L"
 if [ -s "$L" ]; then
   n=$(wc -l < "$L" | tr -d ' ')
   cc=$(grep -c "$(printf '\t')session=cc-" "$L")
-  echo "$n entries; $cc written automatically by Claude Code (session=cc-...)"
+  gb=$(grep -c "$(printf '\t')session=guard-" "$L")
+  echo "$n entries; $cc logged automatically by Claude Code (session=cc-...);"
+  echo "$gb edits stopped once by the guard (session=guard-...)"
   echo
   echo "== latest 10 (UTC time, session, action, file)"
   tail -n 10 "$L" | awk -F'\t' '{ delete v; for (i = 1; i <= NF; i++) { p = index($i, "="); v[substr($i, 1, p - 1)] = substr($i, p + 1) }

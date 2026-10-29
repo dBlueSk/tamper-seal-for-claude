@@ -1,5 +1,6 @@
 #!/bin/bash
-# Installs tamper-seal automatic logging for Claude Code.
+# Installs the tamper-seal hooks for Claude Code: automatic logging (after edits)
+# and the guard (before edits).
 # macOS: double-click (or run `bash hook/install-hook.command`). Linux: `bash hook/install-hook.command`.
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.claude/local:/usr/bin:/bin:$PATH"
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -25,9 +26,12 @@ confirm "Install tamper-seal hook" "tamper-seal for Claude Code will:
 
 1. Install flock with Homebrew (if missing)
 2. Copy tamper-seal into ~/.claude/tamper-seal
-3. Back up ~/.claude/settings.json, then add ONE hook:
-   after Claude Code edits or writes a file, log it
-4. Test it in a temporary folder (one tiny Claude Code run)
+3. Back up ~/.claude/settings.json, then add TWO hooks:
+   - log: after Claude Code edits a file, log it
+   - guard: before Claude Code edits a file that changed
+     without a log entry, stop that edit once and ask
+     Claude to re-read it first
+4. Test both in a temporary folder (two tiny Claude Code runs)
 
 Nothing else is changed. Undo with hook/remove-hook.command." "Install" || { echo "Cancelled. Nothing was changed."; finish 0; }
 
@@ -38,9 +42,9 @@ else echo "FAIL: flock not found. Install it (Linux: it ships with util-linux; m
 
 step "2/4  copy files to $DEST"
 mkdir -p "$DEST/scripts" "$DEST/log"
-cp "$HERE/hook.sh" "$DEST/" && cp "$HERE/../scripts/evlog.sh" "$HERE/../scripts/watch.sh" "$DEST/scripts/" && echo "done" || { echo "FAIL: copy"; finish 1; }
+cp "$HERE/hook.sh" "$HERE/guard.sh" "$DEST/" && cp "$HERE/../scripts/evlog.sh" "$HERE/../scripts/watch.sh" "$DEST/scripts/" && echo "done" || { echo "FAIL: copy"; finish 1; }
 
-step "3/4  add the hook to settings.json"
+step "3/4  add the hooks to settings.json"
 python3 - "$SETTINGS" <<'PY' || { echo "FAIL: settings not changed"; finish 1; }
 import json, os, shutil, sys
 p = sys.argv[1]
@@ -50,17 +54,21 @@ if os.path.exists(p):
         data = json.load(open(p))
     except Exception as e:
         print("settings.json is not plain JSON, so I won't touch it:", e); sys.exit(3)
-post = data.setdefault("hooks", {}).setdefault("PostToolUse", [])
-if any("tamper-seal/hook.sh" in h.get("command", "") for e in post for h in e.get("hooks", [])):
-    print("hook already present, nothing to add"); sys.exit(0)
+hooks = data.setdefault("hooks", {})
+want = {"PostToolUse": "tamper-seal/hook.sh", "PreToolUse": "tamper-seal/guard.sh"}
+missing = [ev for ev, script in want.items()
+           if not any(script in h.get("command", "") for e in hooks.get(ev, []) for h in e.get("hooks", []))]
+if not missing:
+    print("both hooks already present, nothing to add"); sys.exit(0)
 if os.path.exists(p):
     shutil.copy2(p, p + ".bak-tamper-seal"); print("backup saved:", p + ".bak-tamper-seal")
-post.append({"matcher": "Edit|Write|MultiEdit|NotebookEdit",
-             "hooks": [{"type": "command", "command": 'bash "$HOME/.claude/tamper-seal/hook.sh"'}]})
+for ev in missing:
+    hooks.setdefault(ev, []).append({"matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [{"type": "command", "command": 'bash "$HOME/.claude/' + want[ev] + '"'}]})
+    print("added:", ev, "->", want[ev].split("/")[-1])
 os.makedirs(os.path.dirname(p), exist_ok=True)
 with open(p, "w") as f:
     json.dump(data, f, indent=2); f.write("\n")
-print("hook added")
 PY
 
 step "4/4  test (temporary folder, removed afterwards)"
@@ -86,10 +94,30 @@ if [ -n "$CLAUDE" ]; then
   if grep -q "e2e.txt" "$TS_DIR/events.log" 2>/dev/null; then B="PASS"; else B="FAIL (no log line; if Claude Code was just updated or not logged in, run the installer again)"; fi
 fi
 echo "B) real Claude Code edit is logged automatically: $B"
+
+# C) the guard: blocks once after an outside change, then lets the retry through
+echo "v1" > c.txt
+printf '{"session_id":"selftest1","tool_input":{"file_path":"%s"}}' "$T/c.txt" | bash "$DEST/hook.sh"
+gd() { printf '{"session_id":"selftest1","tool_input":{"file_path":"%s"}}' "$T/c.txt" | bash "$DEST/guard.sh" 2>/dev/null; echo $?; }
+r1=$(gd); echo "outside" >> c.txt; r2=$(gd); r3=$(gd)
+if [ "$r1 $r2 $r3" = "0 2 0" ]; then C="PASS"; else C="FAIL (got $r1 $r2 $r3, want 0 2 0)"; fi
+echo "C) guard: unchanged file passes, outside change is blocked once, retry passes: $C"
+
+# D) the guard with real Claude Code: blocked once, Claude re-reads, its edit keeps the outside change
+D="skipped (Claude Code not found)"
+if [ -n "$CLAUDE" ]; then
+  "$CLAUDE" -p "Use the Write tool to create the file d.txt containing exactly one line: line one. Do nothing else." --allowedTools Write >/dev/null 2>&1
+  echo "outside line" >> d.txt
+  "$CLAUDE" -p "Use the Edit tool to replace the text 'line one' with 'line two' in d.txt. If a tool call is blocked, follow its message and try again. Do nothing else." --allowedTools Read,Edit >/dev/null 2>&1
+  if grep -q "line two" d.txt && grep -q "outside line" d.txt && grep -q "session=guard-.*$T/d.txt" "$TS_DIR/events.log"; then D="PASS"
+  else D="FAIL (file: $(tr '\n' '|' < d.txt))"; fi
+fi
+echo "D) real Claude Code is stopped once, re-reads, and keeps the outside change: $D"
 cd / && rm -rf "$T"
 
 echo
-echo "Installed. From now on, Claude Code's own edits are logged to:"
+echo "Installed. Claude Code's own edits are logged, and edits to files changed"
+echo "without a log entry are stopped once so Claude re-reads first. Log:"
 echo "  $DEST/log/events.log"
 echo "Check it any time: hook/check-log.command   Undo: hook/remove-hook.command"
 finish 0
