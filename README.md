@@ -97,10 +97,10 @@ Part of [claude-agent-checks](https://github.com/dBlueSk/claude-agent-checks), a
 
 Two small hooks make tamper-seal work by itself inside Claude Code:
 
-- **Log** (`hook/hook.sh`, after an edit): when Claude Code's Edit or Write tool changes a file, it is logged as `modified`, stamped with the session (`cc-` plus the first 8 characters of the session ID). Claude can no longer forget to log its own edits.
+- **Log** (`hook/hook.sh`, after an edit): when Claude Code's Edit or Write tool changes a file, it is logged as `modified`, stamped with the session (`cc-` plus the first 8 characters of the session ID). Sub-agents share their main session's ID, so their edits get `-sub-` plus the agent's ID added (for example `cc-1702772d-sub-abe8773e`), and you can see which sub-agent changed what. Claude can no longer forget to log its own edits.
 - **Guard** (`hook/guard.sh`, before an edit): if the file changed since its last logged edit and that change was not logged, the guard **stops that one edit** and tells Claude to read the file again first. The retry goes through. So Claude does not overwrite work it has not seen, instead of only reporting it afterwards. Unchanged, new and never-logged files pass silently.
 
-Example, from a real run: another process added a line to `notes.txt`; Claude Code tried to edit it, was stopped once, re-read the file, left the new line alone, and retried successfully. The log shows `cc-… modified`, then `guard-… checked` (who found the unlogged change), then `cc-… modified`.
+Example, from a real run: another process added a line to `notes.txt`; Claude Code tried to edit it, was stopped once, re-read the file, left the new line alone, and retried successfully. The log shows `cc-… modified`, then `guard-… checked` (who found the unlogged change), then `cc-… modified`. The same works inside a sub-agent: it is warned separately from its main session, re-reads, and retries.
 
 ```bash
 bash hook/install-hook.command    # or: chmod +x hook/*.command once, then double-click on macOS
@@ -120,7 +120,7 @@ B and D use a little Claude usage and are skipped if Claude Code is not found (o
 
 `hook/check-log.command` shows whether the hooks are installed, how many edits were logged, how many the guard stopped, and whether the log's hash chain is intact. `hook/remove-hook.command` removes both hooks and `~/.claude/tamper-seal`.
 
-**Tested:** end to end on Linux and on macOS: real Claude Code edits were logged automatically, including with the Claude Code that ships inside the Claude desktop app on macOS; the guard was tested end to end with real Claude Code on Linux and macOS (blocked once, re-read, retried).
+**Tested:** end to end on Linux and on macOS: real Claude Code edits were logged automatically, including with the Claude Code that ships inside the Claude desktop app on macOS; the guard was tested end to end with real Claude Code on Linux and macOS (blocked once, re-read, retried). Sub-agents were tested with real Claude Code on Linux: their edits are logged with their own `-sub-` label, and the guard stops a sub-agent once in the same way.
 
 Thanks to [@geokao](https://github.com/geokao) for the block-once idea, from the discussion in [anthropics/claude-code#104352](https://github.com/anthropics/claude-code/issues/104352).
 
