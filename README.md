@@ -113,7 +113,7 @@ B and D use a little Claude usage and are skipped if Claude Code is not found (o
 
 `hook/check-log.command` shows whether the hooks are installed, how many edits were logged, and how many the guard stopped. `hook/remove-hook.command` removes both hooks and `~/.claude/tamper-seal`.
 
-**Tested:** end to end on Linux and on macOS: real Claude Code edits were logged automatically, including with the Claude Code that ships inside the Claude desktop app on macOS; the guard was tested end to end with real Claude Code (blocked once, re-read, retried).
+**Tested:** end to end on Linux and on macOS: real Claude Code edits were logged automatically, including with the Claude Code that ships inside the Claude desktop app on macOS; the guard was tested end to end with real Claude Code on Linux and macOS (blocked once, re-read, retried).
 
 Thanks to [@geokao](https://github.com/geokao) for the block-once idea, from the discussion in [anthropics/claude-code#104352](https://github.com/anthropics/claude-code/issues/104352).
 
