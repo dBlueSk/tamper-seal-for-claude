@@ -20,4 +20,9 @@ else
   echo "empty so far: no Claude Code edit has been logged yet"
 fi
 echo
+echo "== hash chain"
+if [ -f "$HOME/.claude/tamper-seal/scripts/verify.sh" ]; then
+  TS_DIR="$HOME/.claude/tamper-seal/log" bash "$HOME/.claude/tamper-seal/scripts/verify.sh"
+else echo "verify.sh not installed (run the installer again)"; fi
+echo
 read -r -p "Press Enter to close. " _

@@ -42,7 +42,7 @@ else echo "FAIL: flock not found. Install it (Linux: it ships with util-linux; m
 
 step "2/4  copy files to $DEST"
 mkdir -p "$DEST/scripts" "$DEST/log"
-cp "$HERE/hook.sh" "$HERE/guard.sh" "$DEST/" && cp "$HERE/../scripts/evlog.sh" "$HERE/../scripts/watch.sh" "$DEST/scripts/" && echo "done" || { echo "FAIL: copy"; finish 1; }
+cp "$HERE/hook.sh" "$HERE/guard.sh" "$DEST/" && cp "$HERE/../scripts/evlog.sh" "$HERE/../scripts/watch.sh" "$HERE/../scripts/verify.sh" "$DEST/scripts/" && echo "done" || { echo "FAIL: copy"; finish 1; }
 
 step "3/4  add the hooks to settings.json"
 python3 - "$SETTINGS" <<'PY' || { echo "FAIL: settings not changed"; finish 1; }
@@ -84,6 +84,16 @@ bash "$DEST/scripts/evlog.sh" check checked "$T/a.txt"; sleep 0.5
 got=$(grep -E '^(SEAL|ok|ALERT) ' watch.txt | cut -c1-5 | tr -d ' ' | paste -sd' ' -)
 if [ "$got" = "SEAL ok ALERT" ]; then A="PASS"; else A="FAIL ($got)"; fi
 echo "A) hook logs an edit, outside change is caught: $A"
+awk -F'event=|seen=' '/^(SEAL|ok|ALERT) / { split($2, a, /[:. |]+/); split($3, b, /[:.]/);
+  e = ((a[1]*60 + a[2])*60 + a[3])*1000 + a[4]; s = ((b[1]*60 + b[2])*60 + b[3])*1000 + b[4];
+  d = s - e; if (d < 0) d += 86400000; if (n++ == 0 || d < mn) mn = d; if (d > mx) mx = d }
+  END { if (n) printf "   (timing on this computer: logged -> seen in %d-%d ms)\n", mn, mx }' watch.txt
+cp "$TS_DIR/events.log" chain-copy.log
+E="PASS"
+bash "$DEST/scripts/verify.sh" >/dev/null || E="FAIL (intact log reported as broken)"
+sed -i.bak '1s/session=/session=forged-/' "$TS_DIR/events.log"
+bash "$DEST/scripts/verify.sh" >/dev/null && E="FAIL (edited log reported as intact)"
+cp chain-copy.log "$TS_DIR/events.log"
 
 B="skipped (Claude Code not found)"
 CLAUDE=$(command -v claude 2>/dev/null)
@@ -113,6 +123,7 @@ if [ -n "$CLAUDE" ]; then
   else D="FAIL (file: $(tr '\n' '|' < d.txt))"; fi
 fi
 echo "D) real Claude Code is stopped once, re-reads, and keeps the outside change: $D"
+echo "E) hash chain: intact log verifies, an edited past line is detected: $E"
 cd / && rm -rf "$T"
 
 echo
