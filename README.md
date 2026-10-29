@@ -34,6 +34,7 @@ Claude Code already notices, within one session, when a file it read has changed
 | Tells trusted edits apart from unknown ones | ❌ any change counts the same | ✅ logged edit = seal, unlogged change = ALERT |
 | Check a file before relying on it, without editing it | ❌ only shows up when editing | ✅ `checked` |
 | History to look back at later | ❌ | ✅ the log |
+| Stops an edit on top of an unknown change, before it happens | ❌ | ✅ with the guard hook |
 
 In short: Claude Code tells a session that a file changed since it read it. tamper-seal is the shared logbook between sessions: it knows which changes were legitimate, who made them, and when.
 
@@ -88,25 +89,37 @@ Part of [claude-agent-checks](https://github.com/dBlueSk/claude-agent-checks), a
 - **It is not tamper-proof security.** Anything that can edit the files can also write to the log. Fingerprints are shortened to 12 hex characters and nothing is signed. For integrity monitoring, use tools like AIDE or Tripwire, or simply `git status`.
 - **It works on one machine** with local files.
 
-## Automatic logging with a Claude Code hook (optional)
+## Claude Code hooks: automatic logging and a guard (optional)
 
-Without the hook, Claude logs its own edits because `SKILL.md` tells it to. The hook makes that automatic: after Claude Code's Edit or Write tool changes a file, `hook/hook.sh` logs it as `modified`, stamped with the session (`cc-` plus the first 8 characters of the session ID). Claude can no longer forget to log its own edits, so only changes from outside raise an ALERT.
+Two small hooks make tamper-seal work by itself inside Claude Code:
+
+- **Log** (`hook/hook.sh`, after an edit): when Claude Code's Edit or Write tool changes a file, it is logged as `modified`, stamped with the session (`cc-` plus the first 8 characters of the session ID). Claude can no longer forget to log its own edits.
+- **Guard** (`hook/guard.sh`, before an edit): if the file changed since its last logged edit and that change was not logged, the guard **stops that one edit** and tells Claude to read the file again first. The retry goes through. So Claude does not overwrite work it has not seen, instead of only reporting it afterwards. Unchanged, new and never-logged files pass silently.
+
+Example, from a real run: another process added a line to `notes.txt`; Claude Code tried to edit it, was stopped once, re-read the file, left the new line alone, and retried successfully. The log shows `cc-… modified`, then `guard-… checked` (who found the unlogged change), then `cc-… modified`.
 
 ```bash
 bash hook/install-hook.command    # or: chmod +x hook/*.command once, then double-click on macOS
 ```
 
-The installer shows what it will change and asks first. It backs up `~/.claude/settings.json`, adds one `PostToolUse` hook (matcher `Edit|Write|MultiEdit|NotebookEdit`), and tests itself:
+The installer shows what it will change and asks first. It backs up `~/.claude/settings.json`, adds the two hooks (`PostToolUse` and `PreToolUse`, matcher `Edit|Write|MultiEdit|NotebookEdit`; already-installed hooks are left as they are), and tests itself:
 
-- **A)** the hook script logs an edit, and an outside change is caught;
-- **B)** one real `claude -p` edit in a temporary folder is logged automatically (uses a little Claude usage; skipped if `claude` is not on your PATH).
+- **A)** the log hook records an edit, and an outside change is caught;
+- **B)** one real `claude -p` edit is logged automatically;
+- **C)** the guard lets an unchanged file through, blocks an outside change once, and lets the retry through;
+- **D)** real Claude Code is stopped once, re-reads, and its edit keeps the outside change.
 
-`hook/check-log.command` shows whether the hook is installed and the latest log lines. `hook/remove-hook.command` removes only this hook and `~/.claude/tamper-seal`.
+B and D use a little Claude usage and are skipped if Claude Code is not found (on macOS the installer also finds the Claude Code bundled with the desktop app).
 
-**Tested:** end to end on Linux and on macOS: a real Claude Code edit was logged automatically, including with the Claude Code that ships inside the Claude desktop app on macOS.
+`hook/check-log.command` shows whether the hooks are installed, how many edits were logged, and how many the guard stopped. `hook/remove-hook.command` removes both hooks and `~/.claude/tamper-seal`.
+
+**Tested:** end to end on Linux and on macOS: real Claude Code edits were logged automatically, including with the Claude Code that ships inside the Claude desktop app on macOS; the guard was tested end to end with real Claude Code (blocked once, re-read, retried).
+
+Thanks to [@geokao](https://github.com/geokao) for the block-once idea, from the discussion in [anthropics/claude-code#104352](https://github.com/anthropics/claude-code/issues/104352).
 
 **Limits:**
-- Only Edit/Write tool edits are logged automatically. Edits made through shell commands (like `sed`) are not.
+- Only Edit/Write tool edits are logged automatically. Edits made through shell commands (like `sed`) are not, so the guard treats them as unlogged and stops the next Edit of that file once.
+- The guard does not know what Claude has already read, so it may stop an edit once even if Claude had just read the latest version. It never blocks the same session twice for the same version of a file.
 - It applies to Claude Code on the machine where it is installed, not to cloud sessions.
 - A running Claude Code session may need a restart to pick up the new hook.
 - Hooks run with your user's permissions. Read `hook/hook.sh` (about 15 lines) before installing.

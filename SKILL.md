@@ -34,4 +34,6 @@ The scripts are in this skill's `scripts/` folder: `evlog.sh`, `watch.sh`, `test
 ## Optional: automatic logging with a hook
 If the user has installed the tamper-seal hook (`hook/install-hook.command`, see README), Claude Code's own Edit/Write changes are logged automatically as `modified` (session `cc-xxxxxxxx`) in `~/.claude/tamper-seal/log`. Then you do not need to log those edits yourself, but still log edits made through shell commands, and still run `checked` before relying on a file. To watch that log, use it as `TS_DIR`.
 
+If the guard hook is installed, an edit may be blocked with a message starting "tamper-seal:". That means the file changed without a log entry. Read the file again, keep the other change unless the user says otherwise, then retry the edit (the retry goes through). Mention the unlogged change to the user. Never try to get around the guard.
+
 Never install or change hooks yourself: settings that change Claude's own automatic behavior are the user's decision. If the user wants the hook, point them to the installer, which they run themselves.
