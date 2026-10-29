@@ -50,4 +50,12 @@ awk -F'event=|seen=' '{ split($2, a, /[:. |]+/); split($3, b, /[:.]/);
   d = s - e; if (d < 0) d += 86400000; if (NR == 1 || d < mn) mn = d; if (d > mx) mx = d; sum += d }
   END { if (NR) printf "event -> seen: %d-%d ms (avg %.1f) over %d events\n", mn, mx, sum/NR, NR }' verdicts.txt
 
-if [ "$got" = "$want" ]; then echo "PASS"; exit 0; else echo "FAIL: got '$got' want '$want'"; exit 1; fi
+# Hash chain: intact as written, broken after editing one past line.
+chain="PASS"
+bash "$HERE/verify.sh" >/dev/null || chain="FAIL (intact log reported as broken)"
+sed -i.bak '3s/sub-2/evil-9/' "$TS_DIR/events.log"
+bash "$HERE/verify.sh" >/dev/null && chain="FAIL (edited log reported as intact)"
+echo "hash chain: $chain"
+
+if [ "$got" = "$want" ] && [ "$chain" = "PASS" ]; then echo "PASS"; exit 0
+else echo "FAIL: got '$got' want '$want'; hash chain: $chain"; exit 1; fi

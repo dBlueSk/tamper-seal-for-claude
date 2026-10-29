@@ -3,6 +3,7 @@
 # Usage: TS_DIR=<log folder> evlog.sh SESSION_ID ACTION FILE
 #   ACTION: modified (a logged edit, sets the seal) | checked (verify against the seal)
 # Log format: tab-separated key=value fields, target last (full path).
+# Each line carries chain=<sha256 of (previous chain, this line)>; scripts/verify.sh checks it.
 set -euo pipefail
 
 D="${TS_DIR:?set TS_DIR to the log folder}"
@@ -20,6 +21,9 @@ abs="$dir/$(basename "$tgt")"
 sha256() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi
 }
+sha256_stdin() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi
+}
 now_ms() {  # UTC time with milliseconds; GNU date, gdate (macOS coreutils) or python3
   if date -u +%3N 2>/dev/null | grep -qE '^[0-9]{3}$'; then date -u +%FT%T.%3NZ
   elif command -v gdate >/dev/null 2>&1; then gdate -u +%FT%T.%3NZ
@@ -33,8 +37,21 @@ sha=$(sha256 "$abs" 2>/dev/null | cut -c1-12) || true
 command -v flock >/dev/null 2>&1 || { echo "evlog: flock not found (macOS: brew install flock)" >&2; exit 1; }
 (
   flock 9
-  seq=$(( $(cat "$D/events.seq" 2>/dev/null || echo 0) + 1 ))
+  seq=0; [ -s "$D/events.seq" ] && read -r seq < "$D/events.seq"; seq=$(( seq + 1 ))
   echo "$seq" > "$D/events.seq"
-  printf 'seq=%s\tts=%s\tsession=%s\taction=%s\tsha=%s\ttarget=%s\n' \
-    "$seq" "$(now_ms)" "$sid" "$act" "$sha" "$abs" >> "$D/events.log"
+  # Hash chain: link this line to the previous one. An older log without chains is
+  # linked through the sha256 of everything written before this line.
+  # The newest chain value is cached in events.head (written under the same lock).
+  if [ ! -s "$D/events.log" ]; then prev=genesis
+  elif [ -s "$D/events.head" ]; then read -r prev < "$D/events.head"
+  else
+    prev=$(tail -n 1 "$D/events.log" | tr '\t' '\n' | sed -n 's/^chain=//p' | head -n 1)
+    [ -n "$prev" ] || prev=$(sha256_stdin < "$D/events.log" | cut -c1-64)
+  fi
+  ts=$(now_ms)
+  printf -v line 'seq=%s\tts=%s\tsession=%s\taction=%s\tsha=%s\ttarget=%s' "$seq" "$ts" "$sid" "$act" "$sha" "$abs"
+  chain=$(printf '%s\t%s' "$prev" "$line" | sha256_stdin); chain=${chain:0:16}
+  printf 'seq=%s\tts=%s\tsession=%s\taction=%s\tsha=%s\tchain=%s\ttarget=%s\n' \
+    "$seq" "$ts" "$sid" "$act" "$sha" "$chain" "$abs" >> "$D/events.log"
+  echo "$chain" > "$D/events.head"
 ) 9>"$D/events.lock"
