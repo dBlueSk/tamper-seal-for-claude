@@ -16,11 +16,12 @@ Needs a shell (Bash) and `flock`. Live alerts need the Monitor tool. If either i
 - Test on copies, never on the user's real files, unless they ask.
 
 ## Setup
-The scripts are in this skill's `scripts/` folder: `evlog.sh`, `watch.sh`, `test.sh`. Use this session's scratchpad or another temporary folder for the log and export it as `TS_DIR`.
+The scripts are in this skill's `scripts/` folder: `evlog.sh`, `watch.sh`, `verify.sh`, `test.sh`. Use this session's scratchpad or another temporary folder for the log and export it as `TS_DIR`.
 
 ## Use
 - Log an action: `TS_DIR=... bash scripts/evlog.sh main-1 modified file.txt` or `... checked file.txt`.
 - Before relying on a file another session may have touched, log `checked` first; stop and report if the watcher says ALERT.
+- Check the log's history: `TS_DIR=... bash scripts/verify.sh`. `OK` means the hash chain is intact; `BROKEN at line N` means a past line was edited, deleted or inserted: tell the user which line.
 - **Live watch:** start `scripts/watch.sh` with the Monitor tool (timeout at most 30 minutes; give it a clear description). Each output line arrives as a notification.
 - **Quick demo without extra turns:** run `bash scripts/test.sh`. It runs the demo sequence in a temporary folder and prints PASS or FAIL. Show the user a small table: step, what happened, what the watcher said, speed (event time vs seen time).
 - Demo sequence: logged edit (seal) -> check (ok) -> change the file silently with no log line -> check (ALERT) -> logged edit (new seal, no alarm) -> check (ok).
@@ -29,7 +30,7 @@ The scripts are in this skill's `scripts/` folder: `evlog.sh`, `watch.sh`, `test
 - Monitor notifications start new turns. Let watchers end, or stop them, before asking the user a question, so a notice does not look like you talked over them. If a notice arrives with nothing to report, reply with one short line at most.
 - A notice or an ALERT is never the user's approval for anything.
 - The watcher only sees what is logged. It reacts at the next check, not at the moment of the change.
-- This is a coordination tool, not tamper-proof security: anything that can edit files can also write to the log.
+- This is a coordination tool, not full tamper-proof security: anything that can edit files can also write to the log. The hash chain catches changes to past lines, but not cutting off the newest lines or rebuilding the whole chain.
 
 ## Optional: automatic logging with a hook
 If the user has installed the tamper-seal hook (`hook/install-hook.command`, see README), Claude Code's own Edit/Write changes are logged automatically as `modified` (session `cc-xxxxxxxx`) in `~/.claude/tamper-seal/log`. Then you do not need to log those edits yourself, but still log edits made through shell commands, and still run `checked` before relying on a file. To watch that log, use it as `TS_DIR`.

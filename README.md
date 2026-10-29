@@ -13,7 +13,9 @@ Think of a wax seal on a letter. Every time a session edits a file **and logs it
 | `modified` | A legitimate, logged edit | `SEAL` — new trusted fingerprint |
 | `checked` | Someone is about to rely on the file | `ok` if it matches the seal, `ALERT` if it changed without a log entry |
 
-Each log line carries a sequence number, a UTC timestamp in milliseconds, the session ID, the action, the full file path and its fingerprint. `flock` keeps sequence numbers unique and in order when several sessions write at once. In testing, the watcher reported each event about 3–7 ms after it was logged on Linux, and 15–19 ms on macOS without `coreutils` (there, most of the delay is the cost of reading the clock).
+Each log line carries a sequence number, a UTC timestamp in milliseconds, the session ID, the action, the full file path and its fingerprint. `flock` keeps sequence numbers unique and in order when several sessions write at once. In testing, the watcher reported each event about 8–14 ms after it was logged on Linux, and 20–25 ms on macOS without `coreutils` (most of that is starting the small helper programs that read the clock and compute fingerprints).
+
+**Hash chain.** Each line also carries `chain=`, a fingerprint of the previous line's chain value plus this line. `scripts/verify.sh` recomputes the whole chain: if a past line was edited, deleted or inserted, it reports the first line where the chain breaks. Lines written by older versions without a chain are covered too, through a fingerprint of everything before the first chained line.
 
 ## Use cases
 
@@ -69,6 +71,8 @@ bash scripts/evlog.sh main-1 modified notes.txt   # new SEAL, no alarm
 bash scripts/evlog.sh sub-2  checked  notes.txt   # ok
 ```
 
+Check the log's history any time with `TS_DIR=/tmp/tamper-seal-demo bash scripts/verify.sh` (prints `OK … Head: …` or `BROKEN at line …`).
+
 Usage: `evlog.sh SESSION_ID ACTION FILE` where `ACTION` is `modified` or `checked`. Files are tracked by full path, so `src/config.py` and `tests/config.py` stay separate, and names with spaces are fine.
 
 ## Install as a Claude skill
@@ -86,7 +90,7 @@ Part of [claude-agent-checks](https://github.com/dBlueSk/claude-agent-checks), a
 ## Limits
 
 - **It catches a change at the next check, not the moment it happens.** For real-time file watching, use `inotify` or `fswatch`.
-- **It is not tamper-proof security.** Anything that can edit the files can also write to the log. Fingerprints are shortened to 12 hex characters and nothing is signed. For integrity monitoring, use tools like AIDE or Tripwire, or simply `git status`.
+- **It is not full tamper-proof security.** Anything that can edit the files can also write to the log. The hash chain catches edited, deleted or inserted past lines, but not someone cutting off the newest lines or rebuilding the whole chain from scratch. To catch that too, keep a copy of the latest chain value (`verify.sh` prints it as `Head`) somewhere else and compare later. File fingerprints are shortened to 12 hex characters and nothing is signed. For real integrity monitoring, use tools like AIDE or Tripwire, or simply `git status`.
 - **It works on one machine** with local files.
 
 ## Claude Code hooks: automatic logging and a guard (optional)
@@ -107,11 +111,14 @@ The installer shows what it will change and asks first. It backs up `~/.claude/s
 - **A)** the log hook records an edit, and an outside change is caught;
 - **B)** one real `claude -p` edit is logged automatically;
 - **C)** the guard lets an unchanged file through, blocks an outside change once, and lets the retry through;
-- **D)** real Claude Code is stopped once, re-reads, and its edit keeps the outside change.
+- **D)** real Claude Code is stopped once, re-reads, and its edit keeps the outside change;
+- **E)** the hash chain verifies, and an edited past line is detected.
+
+It also prints how long logging takes on your computer.
 
 B and D use a little Claude usage and are skipped if Claude Code is not found (on macOS the installer also finds the Claude Code bundled with the desktop app).
 
-`hook/check-log.command` shows whether the hooks are installed, how many edits were logged, and how many the guard stopped. `hook/remove-hook.command` removes both hooks and `~/.claude/tamper-seal`.
+`hook/check-log.command` shows whether the hooks are installed, how many edits were logged, how many the guard stopped, and whether the log's hash chain is intact. `hook/remove-hook.command` removes both hooks and `~/.claude/tamper-seal`.
 
 **Tested:** end to end on Linux and on macOS: real Claude Code edits were logged automatically, including with the Claude Code that ships inside the Claude desktop app on macOS; the guard was tested end to end with real Claude Code on Linux and macOS (blocked once, re-read, retried).
 
